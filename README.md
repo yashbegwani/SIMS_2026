@@ -14,17 +14,3 @@ Used timers to manage lifetimes of temporary particles like fire and steam.
 Practised bounds checking and handling edge cases on a grid.
 Added visuals in pygame: gradients, shimmer, fog layers, and a vignette.
 Handled mouse and keyboard input for an interactive simulation.
-
-TO PLAY - 
-Mouse: hold the left mouse button and move over the grid to place the selected material.
-
-Keys (choose the material):
-
-1: Sand
-2: Water
-3: Wood (grows a small tree with leaves)
-4: Fire
-
-Sand starts selected. Try fire on wood or leaves to burn them, and water on fire to make steam.
-
-The game also ends by itself if the grid fills up completely.
