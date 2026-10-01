@@ -27,11 +27,20 @@ CELL = 30
 timers = {}
 LIFETIME = 120
 
+SPHERE_RADIUS = 1   # size of the water blob you drop
+SPREAD_RANGE = 2    # how many cells sideways water can spread after landing
+
 grid = np.zeros((n, n))
 grid[n-1] = 9
 
+# how many sideways spreads each water cell has left (refills whenever it falls)
+flow = np.zeros((n, n), dtype=int)
+
 # fixed per-cell shade, gives each cell a bit of texture
 noise = np.random.randint(-14, 15, (n, n))
+
+# water cells that already spread sideways this step (so they don't move twice)
+spread_done = set()
 
 def tick_lifetimes(grid):
     for pos in list(timers.keys()):
@@ -46,12 +55,22 @@ def tick_lifetimes(grid):
     return grid
 
 def spread(x,y):
+    if flow[y][x] <= 0:
+        return  # used up its spread, stays still (no more endless jiggling)
     left_ok  = (x - 1 >= 0) and (grid[y][x - 1] == 0)
     right_ok = (x + 1 < n)  and (grid[y][x + 1] == 0)
-    if left_ok:
-        grid[y][x-1] = 2
+    if left_ok and right_ok:
+        dx = random.choice([-1, 1])
+    elif left_ok:
+        dx = -1
     elif right_ok:
-        grid[y][x+1] = 2
+        dx = 1
+    else:
+        return
+    grid[y][x] = 0
+    grid[y][x + dx] = 2
+    flow[y][x + dx] = flow[y][x] - 1
+    spread_done.add((x + dx, y))
 
 def check_down(x, y):
     if y + 1 >= n:
@@ -65,6 +84,8 @@ def check_down(x, y):
         return "sand"
     elif val == 2:
         return "water"
+    elif val == 3:
+        return "wood"
     elif val == -2:
         return "leaves"
 
@@ -102,10 +123,12 @@ def move_down(x, y):
     if grid[y][x] == 2:
         grid[y][x] = 0
         grid[y + 1][x] = 2
+        flow[y + 1][x] = SPREAD_RANGE   # falling refills the spread
 
 def sink_through_water(x, y):
     grid[y][x] = 2
     grid[y + 1][x] = 1
+    flow[y][x] = SPREAD_RANGE
 
 def break_leaves(x, y):
     material = grid[y][x]
@@ -129,6 +152,7 @@ def move_left(x, y):
     if grid[y][x] == 2:
         grid[y][x] = 0
         grid[y + 1][x - 1] = 2
+        flow[y + 1][x - 1] = SPREAD_RANGE
 
 def move_right(x, y):
     if grid[y][x] == 1:
@@ -137,6 +161,7 @@ def move_right(x, y):
     if grid[y][x] == 2:
         grid[y][x] = 0
         grid[y + 1][x + 1] = 2
+        flow[y + 1][x + 1] = SPREAD_RANGE
 
 def move_sideways(x, y):
     if grid[y][x] == 1:
@@ -228,8 +253,11 @@ def step_fire_rise(grid):
     return grid
 
 def step(grid):
+    spread_done.clear()
     for y in range(n - 2, -1, -1):
         for x in range(n):
+            if (x, y) in spread_done:
+                continue  # this water already spread sideways this step
             if grid[y][x] in (1,2):
                 cell_below = check_down(x, y)
                 if cell_below == "air":
@@ -238,7 +266,7 @@ def step(grid):
                     sink_through_water(x, y)
                 elif cell_below == "leaves":
                     break_leaves(x, y)
-                elif cell_below in ("sand", "bedrock", "water"):
+                elif cell_below in ("sand", "bedrock", "water", "wood"):
                     move_sideways(x, y)
     return grid
 
@@ -260,6 +288,17 @@ def draw_grid(screen, grid):
             else:
                 color = shade(COLORS[val], noise[y][x])
                 pygame.draw.rect(screen, color, (x * CELL, y * CELL, CELL, CELL))
+
+def spawn_water(grid, x0, y0, r=SPHERE_RADIUS):
+    """drops a round blob of water (made of rect cells) centred on the click."""
+    for dy in range(-r, r + 1):
+        for dx in range(-r, r + 1):
+            if dx * dx + dy * dy <= r * r:
+                y, x = y0 + dy, x0 + dx
+                if 0 <= y < n and 0 <= x < n and grid[y][x] == 0:
+                    grid[y][x] = 2
+                    flow[y][x] = SPREAD_RANGE
+    return grid
 
 def spawn_wood(grid, x0=None, y0=None):
     """grows a pine-tree shape from a sand seed."""
@@ -349,7 +388,7 @@ pygame.init()
 screen = pygame.display.set_mode((n * CELL, n * CELL))
 clock = pygame.time.Clock()
 
-current_material = 1  # 1=sand, 2=water, 3=wood, 4=fire, 5=bedrock
+current_material = 1  # 0=erase, 1=sand, 2=water, 3=wood, 4=fire, 5=bedrock
 
 count = 0
 running = True
@@ -358,7 +397,9 @@ while running:
         if e.type == pygame.QUIT:
             running = False
         if e.type == pygame.KEYDOWN:
-            if e.key == pygame.K_1:
+            if e.key == pygame.K_0:
+                current_material = 0
+            elif e.key == pygame.K_1:
                 current_material = 1
             elif e.key == pygame.K_2:
                 current_material = 2
@@ -368,15 +409,20 @@ while running:
                 current_material = 4
             elif e.key == pygame.K_5:
                 current_material = 5
+        # water drops one blob per click (not every frame while held)
+        if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and current_material == 2:
+            gx, gy = e.pos[0] // CELL, e.pos[1] // CELL
+            if 0 <= gx < n and 0 <= gy < n:
+                grid = spawn_water(grid, gx, gy)
 
     if pygame.mouse.get_pressed()[0]:
         mx, my = pygame.mouse.get_pos()
         gx, gy = mx // CELL, my // CELL
         if 0 <= gx < n and 0 <= gy < n:
-            if current_material == 1 and grid[gy][gx] == 0:
+            if current_material == 0:
+                grid[gy][gx] = 0   # erase anything, including bedrock
+            elif current_material == 1 and grid[gy][gx] == 0:
                 grid[gy][gx] = 1
-            elif current_material == 2 and grid[gy][gx] == 0:
-                grid[gy][gx] = 2
             elif current_material == 3:
                 grid = spawn_wood(grid, gx, gy)
             elif current_material == 4:
