@@ -1,4 +1,22 @@
 # SIMS_2026
+
+
+TO PLAY - 
+Mouse: hold the left mouse button and move over the grid to place the selected material.
+
+Keys (choose the material):
+
+1: Sand
+2: Water
+3: Wood (grows a small tree with leaves)
+4: Fire
+5: Bedrock
+
+Sand starts selected. Try fire on wood or leaves to burn them, and water on fire to make steam.
+
+The game also ends by itself if the grid fills up completely.
+
+
 Question 1. Why does the swap grid start as a copy of the current state, rather than being filled with zeros? What would happen to a grain that does not move if G′ started empty?
 
 If the new grid starts empty (all zeros), any cell that doesn't move is never
